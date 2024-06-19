@@ -1,7 +1,11 @@
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.io.PrintWriter;
+import java.util.HashMap;
+import java.util.Optional;
 
 public class Main {
   private static String SPACE = " ";
@@ -15,6 +19,7 @@ public class Main {
     // Uncomment this block to pass the first stage
     ServerSocket serverSocket = null;
     Socket clientSocket = null;
+    BufferedReader in = null;
     PrintWriter out = null;
 
     try {
@@ -23,8 +28,12 @@ public class Main {
       // ensures that we don't run into 'Address already in use' errors
       serverSocket.setReuseAddress(true);
       clientSocket = serverSocket.accept(); // Wait for connection from client.
+
+      in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
       out = new PrintWriter(clientSocket.getOutputStream(), true);
-      String response = handle();
+
+      String request = in.readLine();
+      String response = handle(request);
       out.println(response);
       System.out.println("accepted new connection");
     } catch (IOException e) {
@@ -34,15 +43,17 @@ public class Main {
     }
   }
 
-  static String handle() {
-    StringBuilder sb = new StringBuilder();
-    sb.append(HTTP_VERSION);
-    sb.append(SPACE);
-    sb.append(200);
-    sb.append(SPACE);
-    sb.append("OK");
-    sb.append(CRLF);
-    sb.append(CRLF);
-    return sb.toString();
+  static String handle(String request) {
+    Response response = null;
+    String url = parseRequest(request);
+    if (url.equals("/")) response = Response.OK(Optional.of(url));
+    else response = Response.NOT_FOUND();
+    return HttpV1_1Protocol.render(response);
+  }
+
+  static String parseRequest(String request) {
+    String[] segments = request.split(CRLF);
+    String[] routeParts = segments[0].split(SPACE);
+    return routeParts[1];
   }
 }
