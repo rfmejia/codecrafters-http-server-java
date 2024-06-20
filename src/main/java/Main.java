@@ -35,7 +35,6 @@ public class Main {
       String request = in.readLine();
       String response = handle(request);
       out.println(response);
-      System.out.println("accepted new connection");
     } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
     } finally {
@@ -43,17 +42,20 @@ public class Main {
     }
   }
 
-  static String handle(String request) {
+  static String handle(String rawRequest) {
     Response response = null;
-    String url = parseRequest(request);
-    if (url.equals("/")) response = Response.OK(Optional.of(url));
-    else response = Response.NOT_FOUND();
+    Request request = Request.parse(rawRequest);
+    String url = request.url();
+    if (url.equals("/")) response =
+      Response.OK().withBody(url).withHeader("Content-Type", "text/plain").build();
+    else if (url.startsWith("/echo/")) {
+      String input = url.substring("/echo/".length());
+      response = Response.OK()
+                   .withBody(input)
+                   .withHeader("Content-Type", "text/plain")
+                   .build();
+    }
+    else response = Response.NOT_FOUND().build();
     return HttpV1_1Protocol.render(response);
-  }
-
-  static String parseRequest(String request) {
-    String[] segments = request.split(CRLF);
-    String[] routeParts = segments[0].split(SPACE);
-    return routeParts[1];
   }
 }

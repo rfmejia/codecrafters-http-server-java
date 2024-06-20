@@ -1,5 +1,9 @@
 import java.util.function.Function;
 
+/*
+Routes routes = new Route("")
+ */
+
 public class RouteManager {
   public static class Builder {
     public Builder newBuilder() {
@@ -13,6 +17,7 @@ public class RouteManager {
 }
 
 //public class Route {
+//  public boolean match("/echo/:id")
 //  public static class Builder {
 //    public Builder newBuilder() {
 //      return null;
