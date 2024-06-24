@@ -4,11 +4,13 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Optional;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 /* TODO
  * - Error handling
  * - Route handling
+ * - Elegant handling of `Closeable()`
  */
 
 public class Main {
@@ -20,36 +22,34 @@ public class Main {
     // Uncomment this block to pass the first stage
     ServerSocket serverSocket = null;
     Socket clientSocket = null;
-    BufferedReader in = null;
-    PrintWriter out = null;
+    Executor executor = null;
 
     try {
       serverSocket = new ServerSocket(4221);
       // Since the tester restarts your program quite often, setting SO_REUSEADDR
       // ensures that we don't run into 'Address already in use' errors
       serverSocket.setReuseAddress(true);
-      clientSocket = serverSocket.accept(); // Wait for connection from client.
+      executor = Executors.newVirtualThreadPerTaskExecutor();
 
-      in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-      out = new PrintWriter(clientSocket.getOutputStream(), true);
-
-      Request request = HttpV1_1Protocol.parseRequest(in);
-      Response response = handle(request);
-      String rawResponse = HttpV1_1Protocol.renderResponse(response);
-      out.print(rawResponse);
-    } catch (ParseException ex) {
-      if (out != null) {
-        Response response = Response.INTERNAL_SERVER_ERRROR("Could not parse request: " + ex.getMessage());
-        String rawResponse = HttpV1_1Protocol.renderResponse(response);
-        out.print(rawResponse);
+      while (true) {
+        try {
+          clientSocket = serverSocket.accept(); // Wait for connection from client.
+          BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+          PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+          Job job = new Job(in, out);
+          executor.execute(job);
+        } catch (IOException ex) {
+          System.out.println("IOException while accepting a request: " + ex.getMessage());
+        }
       }
     } catch (IOException ex) {
-      System.out.println("IOException: " + ex.getMessage());
+      System.out.println("IOException during initialization: " + ex.getMessage());
     } finally {
-      out.close();
+      serverSocket.close();
     }
   }
 
+  // TODO Generalize this
   static Response handle(Request request) {
     String url = request.url();
     try {
@@ -66,5 +66,35 @@ public class Main {
     } catch (BuilderException ex) {
       return Response.INTERNAL_SERVER_ERRROR("Could not build response: " + ex.getMessage());
     }
+  }
+
+  static class Job implements Runnable {
+    private BufferedReader in = null;
+    private PrintWriter out = null;
+
+    public Job(BufferedReader in, PrintWriter out) {
+      this.in = in;
+      this.out = out;
+    }
+
+    public void run() {
+      try {
+        Request request = HttpV1_1Protocol.parseRequest(in);
+        Response response = handle(request);
+        String rawResponse = HttpV1_1Protocol.renderResponse(response);
+        out.print(rawResponse);
+      } catch (ParseException ex) {
+        if (out != null) {
+          Response response = Response.INTERNAL_SERVER_ERRROR("Could not parse request: " + ex.getMessage());
+          String rawResponse = HttpV1_1Protocol.renderResponse(response);
+          out.print(rawResponse);
+        }
+      } catch (IOException ex) {
+        System.out.println("IOException: " + ex.getMessage());
+      } finally {
+        out.close();
+      }
+    }
+
   }
 }
