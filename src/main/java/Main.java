@@ -4,16 +4,17 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.HashMap;
 import java.util.Optional;
 
-public class Main {
-  private static String SPACE = " ";
-  private static String CRLF = "\r\n";
-  private static String HTTP_VERSION = "HTTP/1.1";
+/* TODO
+ * - Error handling
+ * - Route handling
+ */
 
+public class Main {
   public static void main(String[] args) throws IOException {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
+    // You can use print statements as follows for debugging, they'll be visible
+    // when running tests.
     System.out.println("Logs from your program will appear here!");
 
     // Uncomment this block to pass the first stage
@@ -32,30 +33,38 @@ public class Main {
       in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
       out = new PrintWriter(clientSocket.getOutputStream(), true);
 
-      String request = in.readLine();
-      String response = handle(request);
-      out.println(response);
-    } catch (IOException e) {
-      System.out.println("IOException: " + e.getMessage());
+      Request request = HttpV1_1Protocol.parseRequest(in);
+      Response response = handle(request);
+      String rawResponse = HttpV1_1Protocol.renderResponse(response);
+      out.print(rawResponse);
+    } catch (ParseException ex) {
+      if (out != null) {
+        Response response = Response.INTERNAL_SERVER_ERRROR("Could not parse request: " + ex.getMessage());
+        String rawResponse = HttpV1_1Protocol.renderResponse(response);
+        out.print(rawResponse);
+      }
+    } catch (IOException ex) {
+      System.out.println("IOException: " + ex.getMessage());
     } finally {
       out.close();
     }
   }
 
-  static String handle(String rawRequest) {
-    Response response = null;
-    Request request = Request.parse(rawRequest);
+  static Response handle(Request request) {
     String url = request.url();
-    if (url.equals("/")) response =
-      Response.OK().withBody(url).withHeader("Content-Type", "text/plain").build();
-    else if (url.startsWith("/echo/")) {
-      String input = url.substring("/echo/".length());
-      response = Response.OK()
-                   .withBody(input)
-                   .withHeader("Content-Type", "text/plain")
-                   .build();
+    try {
+      if (url.equals("/"))
+        return Response.OK().withBody(url).build();
+      else if (url.startsWith("/echo/")) {
+        String input = url.substring("/echo/".length());
+        return Response.OK().withBody(input).build();
+      } else if (url.startsWith("/user-agent")) {
+        String body = request.headers().get("User-Agent");
+        return Response.OK().withBody(body).build();
+      } else
+        return Response.NOT_FOUND().build();
+    } catch (BuilderException ex) {
+      return Response.INTERNAL_SERVER_ERRROR("Could not build response: " + ex.getMessage());
     }
-    else response = Response.NOT_FOUND().build();
-    return HttpV1_1Protocol.render(response);
   }
 }

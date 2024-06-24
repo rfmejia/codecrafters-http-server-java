@@ -32,3 +32,5 @@ public class RouteManager {
 //    }
 //  }
 //}
+
+// from "/url/path/:id?p=1&p=2"
