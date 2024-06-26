@@ -46,6 +46,6 @@ record Response(StatusCode statusCode, Optional<String> body, Map<String, String
       headers.put(HttpHeader.ContentType.value(), "text/plain");
       headers.put(HttpHeader.ContentLength.value(), "" + body.length());
     }
-    return new Response(StatusCode.InternalServerError(), Optional.of(body), headers);
+    return new Response(StatusCode.InternalServerError(), Optional.ofNullable(body), headers);
   }
 }

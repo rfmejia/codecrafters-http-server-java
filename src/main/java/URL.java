@@ -9,11 +9,11 @@ record URL(String[] path, Map<String, String> params) {
 
 // /path1/:id/path2?one=1&two=2
 // 1. Use `take` a lot
-
-interface Path {
-
-}
-
-record Root() implements Path {}
-record Segment() implements Path {}
-record ValueSegment(String value) implements Path {}
+//
+//interface Path {
+//
+//}
+//
+//record Root() implements Path {}
+//record Segment() implements Path {}
+//record ValueSegment(String value) implements Path {}

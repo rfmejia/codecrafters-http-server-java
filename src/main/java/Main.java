@@ -4,6 +4,10 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
@@ -14,10 +18,19 @@ import java.util.concurrent.Executors;
  */
 
 public class Main {
+  static Optional<String> directory = Optional.empty();
+
   public static void main(String[] args) throws IOException {
     // You can use print statements as follows for debugging, they'll be visible
     // when running tests.
     System.out.println("Logs from your program will appear here!");
+
+    for (int i = 0; i < args.length - 1; ++i) {
+      if (args[i].equals("--directory")) {
+        directory = Optional.of(args[i + 1]);
+        break;
+      }
+    }
 
     // Uncomment this block to pass the first stage
     ServerSocket serverSocket = null;
@@ -50,7 +63,7 @@ public class Main {
   }
 
   // TODO Generalize this
-  static Response handle(Request request) {
+  static Response handle(Request request) throws IOException {
     String url = request.url();
     try {
       if (url.equals("/"))
@@ -61,6 +74,20 @@ public class Main {
       } else if (url.startsWith("/user-agent")) {
         String body = request.headers().get("User-Agent");
         return Response.OK().withBody(body).build();
+      } else if (url.startsWith("/files/")) {
+        if (directory.isEmpty())
+          throw new BuilderException("Root directory for static files was not supplied");
+
+        String filename = url.substring("/files/".length());
+        Path path = Paths.get(directory.get(), filename);
+        if (!Files.isRegularFile(path))
+          return Response.NOT_FOUND().build();
+
+        byte[] bytes = Files.readAllBytes(path);
+        String content = new String(bytes);
+        return Response.OK().withBody(content)
+            .withHeader("Content-Length", Integer.toString(bytes.length))
+            .withHeader("Content-Type", "application/octet-stream").build();
       } else
         return Response.NOT_FOUND().build();
     } catch (BuilderException ex) {
@@ -95,6 +122,5 @@ public class Main {
         out.close();
       }
     }
-
   }
 }
