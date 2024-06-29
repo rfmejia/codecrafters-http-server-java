@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -80,14 +82,22 @@ public class Main {
 
         String filename = url.substring("/files/".length());
         Path path = Paths.get(directory.get(), filename);
-        if (!Files.isRegularFile(path))
-          return Response.NOT_FOUND().build();
 
-        byte[] bytes = Files.readAllBytes(path);
-        String content = new String(bytes);
-        return Response.OK().withBody(content)
-            .withHeader("Content-Length", Integer.toString(bytes.length))
-            .withHeader("Content-Type", "application/octet-stream").build();
+        if (request.method() == HttpMethod.GET) {
+          if (!Files.isRegularFile(path))
+            return Response.NOT_FOUND().build();
+
+          byte[] bytes = Files.readAllBytes(path);
+          String content = new String(bytes);
+          return Response.OK().withBody(content)
+              .withHeader("Content-Length", Integer.toString(bytes.length))
+              .withHeader("Content-Type", "application/octet-stream").build();
+        } else if (request.method() == HttpMethod.POST) {
+          Files.writeString(path, request.body().orElse(""), StandardCharsets.UTF_8, StandardOpenOption.CREATE,
+              StandardOpenOption.TRUNCATE_EXISTING);
+          return Response.CREATED().build();
+        } else
+          return Response.NOT_FOUND().build();
       } else
         return Response.NOT_FOUND().build();
     } catch (BuilderException ex) {

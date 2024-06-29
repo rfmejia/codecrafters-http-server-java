@@ -35,6 +35,10 @@ record Response(StatusCode statusCode, Optional<String> body, Map<String, String
     return new Builder(StatusCode.OK());
   }
 
+  public static Builder CREATED() {
+    return new Builder(StatusCode.CREATED());
+  }
+
   public static Builder NOT_FOUND() {
     return new Builder(StatusCode.NotFound());
   }
