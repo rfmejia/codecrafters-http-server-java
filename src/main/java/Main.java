@@ -73,10 +73,14 @@ public class Main {
       else if (url.startsWith("/echo/")) {
         String input = url.substring("/echo/".length());
         Response.Builder response = Response.OK().withBody(input);
-        String encoding = request.headers().get(HttpHeader.AcceptEncoding.value());
-        if (encoding != null && encoding.equalsIgnoreCase("gzip")) {
-          response.withHeader(HttpHeader.ContentEncoding.value(), "gzip");
-        }
+        Optional<String[]> encodings = Optional.ofNullable(request.headers().get(HttpHeader.AcceptEncoding.value()))
+            .map(str -> str.split(","));
+        encodings.ifPresent(encs -> {
+          for (String encoding : encs) {
+            if (encoding.trim().equalsIgnoreCase("gzip"))
+              response.withHeader(HttpHeader.ContentEncoding.value(), "gzip");
+          }
+        });
         return response.build();
       } else if (url.startsWith("/user-agent")) {
         String body = request.headers().get("User-Agent");
