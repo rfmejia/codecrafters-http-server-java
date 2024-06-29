@@ -1,4 +1,6 @@
 enum HttpHeader {
+  AcceptEncoding("Accept-Encoding"),
+  ContentEncoding("Content-Encoding"),
   ContentLength("Content-Length"),
   ContentType("Content-Type");
 
