@@ -1,7 +1,8 @@
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -12,17 +13,12 @@ import java.nio.file.StandardOpenOption;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-
-/* TODO
- * - Error handling
- * - Route handling
- * - Elegant handling of `Closeable()`
- */
+import java.util.zip.GZIPOutputStream;
 
 public class Main {
   static Optional<String> directory = Optional.empty();
 
-  public static void main(String[] args) throws IOException {
+  public static void main(final String[] args) throws IOException {
     // You can use print statements as follows for debugging, they'll be visible
     // when running tests.
     System.out.println("Logs from your program will appear here!");
@@ -49,55 +45,76 @@ public class Main {
       while (true) {
         try {
           clientSocket = serverSocket.accept(); // Wait for connection from client.
-          BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-          PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
-          Job job = new Job(in, out);
+          final Job job = new Job(clientSocket);
           executor.execute(job);
-        } catch (IOException ex) {
+        } catch (final IOException ex) {
           System.out.println("IOException while accepting a request: " + ex.getMessage());
         }
       }
-    } catch (IOException ex) {
-      System.out.println("IOException during initialization: " + ex.getMessage());
+    } catch (final Exception ex) {
+      System.out.println("Exception during initialization: " + ex.getMessage());
     } finally {
       serverSocket.close();
     }
   }
 
   // TODO Generalize this
-  static Response handle(Request request) throws IOException {
-    String url = request.url();
+  static Response handle(final Request request) throws IOException {
+    final String url = request.url();
     try {
       if (url.equals("/"))
-        return Response.OK().withBody(url).build();
+        return Response.OK().withBody(url)
+            .withHeader(HttpHeader.ContentType.value(), "text/plain")
+            .build();
       else if (url.startsWith("/echo/")) {
-        String input = url.substring("/echo/".length());
-        Response.Builder response = Response.OK().withBody(input);
-        Optional<String[]> encodings = Optional.ofNullable(request.headers().get(HttpHeader.AcceptEncoding.value()))
+        final String input = url.substring("/echo/".length());
+        final Response.Builder response = Response.OK();
+        final Optional<String[]> encodings = Optional
+            .ofNullable(request.headers().get(HttpHeader.AcceptEncoding.value()))
             .map(str -> str.split(","));
-        encodings.ifPresent(encs -> {
-          for (String encoding : encs) {
+        boolean gzipEncodingRequested = encodings.map(encs -> {
+          for (final String encoding : encs) {
             if (encoding.trim().equalsIgnoreCase("gzip"))
-              response.withHeader(HttpHeader.ContentEncoding.value(), "gzip");
+              return true;
           }
-        });
+          return false;
+        }).orElse(false);
+
+        if (gzipEncodingRequested) {
+          final ByteArrayOutputStream byteOutputStream = new ByteArrayOutputStream();
+          final GZIPOutputStream gzipOutputStream = new GZIPOutputStream(byteOutputStream);
+          final byte[] buffer = input.getBytes(StandardCharsets.UTF_8);
+          gzipOutputStream.write(buffer);
+          gzipOutputStream.close();
+          final byte[] bytes = byteOutputStream.toByteArray();
+          byteOutputStream.close();
+          response
+              .withHeader(HttpHeader.ContentEncoding.value(), "gzip")
+              .withHeader(HttpHeader.ContentType.value(), "text/plain")
+              .withBody(bytes);
+        } else
+          response
+              .withHeader(HttpHeader.ContentType.value(), "text/plain")
+              .withBody(input);
         return response.build();
       } else if (url.startsWith("/user-agent")) {
-        String body = request.headers().get("User-Agent");
-        return Response.OK().withBody(body).build();
+        final String body = request.headers().get("User-Agent");
+        return Response.OK().withBody(body)
+            .withHeader(HttpHeader.ContentType.value(), "text/plain")
+            .build();
       } else if (url.startsWith("/files/")) {
         if (directory.isEmpty())
           throw new BuilderException("Root directory for static files was not supplied");
 
-        String filename = url.substring("/files/".length());
-        Path path = Paths.get(directory.get(), filename);
+        final String filename = url.substring("/files/".length());
+        final Path path = Paths.get(directory.get(), filename);
 
         if (request.method() == HttpMethod.GET) {
           if (!Files.isRegularFile(path))
             return Response.NOT_FOUND().build();
 
-          byte[] bytes = Files.readAllBytes(path);
-          String content = new String(bytes);
+          final byte[] bytes = Files.readAllBytes(path);
+          final String content = new String(bytes);
           return Response.OK().withBody(content)
               .withHeader("Content-Length", Integer.toString(bytes.length))
               .withHeader("Content-Type", "application/octet-stream").build();
@@ -109,36 +126,43 @@ public class Main {
           return Response.NOT_FOUND().build();
       } else
         return Response.NOT_FOUND().build();
-    } catch (BuilderException ex) {
+    } catch (final BuilderException ex) {
       return Response.INTERNAL_SERVER_ERRROR("Could not build response: " + ex.getMessage());
     }
   }
 
   static class Job implements Runnable {
-    private BufferedReader in = null;
-    private PrintWriter out = null;
+    private Socket clientSocket = null;
 
-    public Job(BufferedReader in, PrintWriter out) {
-      this.in = in;
-      this.out = out;
+    public Job(Socket clientSocket) {
+      this.clientSocket = clientSocket;
     }
 
     public void run() {
+      BufferedReader in = null;
+      DataOutputStream out = null;
       try {
-        Request request = HttpV1_1Protocol.parseRequest(in);
-        Response response = handle(request);
-        String rawResponse = HttpV1_1Protocol.renderResponse(response);
-        out.print(rawResponse);
-      } catch (ParseException ex) {
-        if (out != null) {
-          Response response = Response.INTERNAL_SERVER_ERRROR("Could not parse request: " + ex.getMessage());
-          String rawResponse = HttpV1_1Protocol.renderResponse(response);
-          out.print(rawResponse);
+        try {
+          in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+          out = new DataOutputStream(clientSocket.getOutputStream());
+
+          final Request request = HttpV1_1Protocol.parseRequest(in);
+          final Response response = handle(request);
+          HttpV1_1Protocol.renderResponse(response, out);
+        } catch (final ParseException ex) {
+          if (out != null) {
+            final Response response = Response.INTERNAL_SERVER_ERRROR("Could not parse request: " + ex.getMessage());
+            HttpV1_1Protocol.renderResponse(response, out);
+          }
+        } finally {
+          if (in != null)
+            in.close();
+          if (out != null)
+            out.close();
         }
-      } catch (IOException ex) {
-        System.out.println("IOException: " + ex.getMessage());
-      } finally {
-        out.close();
+      } catch (final IOException ex) {
+        System.out.print("IOException: ");
+        ex.printStackTrace();
       }
     }
   }

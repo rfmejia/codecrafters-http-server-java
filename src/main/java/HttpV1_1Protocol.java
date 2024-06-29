@@ -1,5 +1,8 @@
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 class HttpV1_1Protocol {
   private static String HTTP_VERSION = "HTTP/1.1";
@@ -90,16 +93,22 @@ class HttpV1_1Protocol {
     }
   }
 
-  public static String renderResponse(final Response response) {
-    final StringBuilder sb = new StringBuilder();
-    sb.append(HTTP_VERSION).append(SPACE);
-    sb.append(response.statusCode().code()).append(SPACE).append(response.statusCode().message());
-    sb.append(CRLF);
+  static byte[] asUTF8(String str) {
+    return str.getBytes(StandardCharsets.UTF_8);
+  }
+
+  public static void renderResponse(final Response response, final OutputStream out) throws IOException {
+    out.write(asUTF8(HTTP_VERSION + SPACE + response.statusCode().code()));
+    out.write(asUTF8(SPACE + response.statusCode().message() + CRLF));
     if (response.headers() != null) {
-      response.headers().forEach((key, value) -> sb.append(key).append(HEADER_SEPARATOR).append(value).append(CRLF));
+      for (Map.Entry<String, String> entry : response.headers().entrySet()) {
+        String header = entry.getKey() + HEADER_SEPARATOR + SPACE + entry.getValue() + CRLF;
+        out.write(asUTF8(header));
+      }
     }
-    sb.append(CRLF);
-    response.body().ifPresent(body -> sb.append(body));
-    return sb.toString();
+    out.write(asUTF8(CRLF));
+    if (response.body().isPresent()) {
+      out.write(response.body().get());
+    }
   }
 }

@@ -1,11 +1,12 @@
 import java.util.Map;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Optional;
 
-record Response(StatusCode statusCode, Optional<String> body, Map<String, String> headers) {
+record Response(StatusCode statusCode, Optional<byte[]> body, Map<String, String> headers) {
   public static class Builder {
     private StatusCode statusCode = null;
-    private String body = null;
+    private byte[] body = null;
     private final Map<String, String> headers = new HashMap<>();
 
     public Response build() throws BuilderException {
@@ -18,11 +19,14 @@ record Response(StatusCode statusCode, Optional<String> body, Map<String, String
       this.statusCode = code;
     }
 
-    public Builder withBody(final String newBody) {
+    public Builder withBody(final byte[] newBody) {
       this.body = newBody;
-      return this
-          .withHeader(HttpHeader.ContentType.value(), "text/plain")
-          .withHeader(HttpHeader.ContentLength.value(), "" + this.body.length());
+      return this.withHeader(HttpHeader.ContentLength.value(), "" + this.body.length);
+    }
+
+    public Builder withBody(final String newBody) {
+      this.body = newBody.getBytes(StandardCharsets.UTF_8);
+      return this.withHeader(HttpHeader.ContentLength.value(), "" + this.body.length);
     }
 
     public Builder withHeader(final String key, final String value) {
@@ -50,6 +54,7 @@ record Response(StatusCode statusCode, Optional<String> body, Map<String, String
       headers.put(HttpHeader.ContentType.value(), "text/plain");
       headers.put(HttpHeader.ContentLength.value(), "" + body.length());
     }
-    return new Response(StatusCode.InternalServerError(), Optional.ofNullable(body), headers);
+    return new Response(StatusCode.InternalServerError(), Optional.ofNullable(body.getBytes(StandardCharsets.UTF_8)),
+        headers);
   }
 }
